@@ -76,5 +76,5 @@ if [ -f "${checkout}/hostnames.txt" ] ; then
 fi
 
 # move the new local data in place
-cp "${newdata}" "${workdir}/${output}"
+cp "${newdata}" "${output}"
 rm "${newdata}"
