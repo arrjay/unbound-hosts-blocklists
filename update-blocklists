@@ -1,0 +1,80 @@
+#!/bin/bash
+
+# pull data from https://github.com/notracking/hosts-blocklists and transform
+# into local-data that unbound likes.
+
+# inspired by pi-hole - https://github.com/pi-hole/pi-hole
+
+# get own name
+self=${0##*/}
+
+# defaults
+if [ -z "${workdir}" ] ; then
+  workdir="/var/run/${self}"
+fi
+repo_uri="https://github.com/notracking/hosts-blocklists.git"
+output="local-data.conf"
+# set to anything non-blank to enable
+ipv6=""
+ipv4addr="127.0.0.1"
+ipv6addr="::1"
+
+# source a config if we got one
+if [ -f "/etc/${self}.conf" ] ; then
+  . "/etc/${self}.conf"
+fi
+
+# jump to workdir
+cd "${workdir}"
+
+# get a nice checkout name
+checkout=${repo_uri##*/}
+checkout=${checkout%%.git}
+
+# check if we have a source git repo
+if [ -d "${workdir}/${checkout}/.git" ] ; then
+  # we do, update
+  (cd "${workdir}/${checkout}" && git pull -q)
+else
+  # go the checkout
+  git clone -q "${repo_uri}"
+fi
+
+dts=""
+# check if output is older than repo - this also works if output ENOENT
+for f in "${checkout}"/* ; do
+  if [ "${f}" -nt "${output}" ] ; then
+    dts="older"
+  fi
+done
+
+# if $dts is set now, go update!
+if [ -z "${dts}" ] ; then
+  exit 0
+fi
+
+# get a scratch file
+newdata=$(mktemp)
+
+# okay build the local-data - first domains, then hostnames
+# how to do this with unbound gleaned from
+# http://www.unbound.net/pipermail/unbound-users/2009-April/000560.html
+if [ -f "${checkout}/domains.txt" ] ; then
+  if [ -z "${ipv6}" ] ; then
+    awk -F/ -v v4="${ipv4addr}" '$1 ~ "address" { print "local-zone: \""$2"\" redirect\nlocal-data: \""$2" 3600 IN A "v4"\"" }' "${checkout}/domains.txt" >> "${newdata}"
+  else
+    awk -F/ -v v4="${ipv4addr}" -v v6="${ipv6addr}" '$1 ~ "address" { print "local-zone: \""$2"\" redirect\nlocal-data: \""$2" 3600 IN A "v4"\"\nlocal-data: \""$2" 3600 IN AAAA "v6"\"" }' "${checkout}/domains.txt" >> "${newdata}"
+  fi
+fi
+
+if [ -f "${checkout}/hostnames.txt" ] ; then
+  if [ -z "${ipv6}" ] ; then
+    awk '$1 ~ "0.0.0.0" { print "local-data: \""$2" 3600 IN A 127.0.0.1\"" }' "${checkout}/hostnames.txt" >> "${newdata}"
+  else
+    awk '$1 ~ "0.0.0.0" { print "local-data: \""$2" 3600 IN A 127.0.0.1\"\nlocal-data: \""$2" 3600 IN AAAA ::1\"" }' "${checkout}/hostnames.txt" >> "${newdata}"
+  fi
+fi
+
+# move the new local data in place
+cp "${newdata}" "${workdir}/${output}"
+rm "${newdata}"
