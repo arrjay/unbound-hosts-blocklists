@@ -55,26 +55,21 @@ fi
 
 # get a scratch file
 newdata=$(mktemp)
+uniqdata=$(mktemp)
 
 # okay build the local-data - first domains, then hostnames
 # how to do this with unbound gleaned from
 # http://www.unbound.net/pipermail/unbound-users/2009-April/000560.html
 if [ -f "${checkout}/domains.txt" ] ; then
-  if [ -z "${ipv6}" ] ; then
-    awk -F/ -v v4="${ipv4addr}" '$1 ~ "address" { print "local-zone: \""$2"\" redirect\nlocal-data: \""$2" 3600 IN A "v4"\"" }' "${checkout}/domains.txt" >> "${newdata}"
-  else
-    awk -F/ -v v4="${ipv4addr}" -v v6="${ipv6addr}" '$1 ~ "address" { print "local-zone: \""$2"\" redirect\nlocal-data: \""$2" 3600 IN A "v4"\"\nlocal-data: \""$2" 3600 IN AAAA "v6"\"" }' "${checkout}/domains.txt" >> "${newdata}"
-  fi
+  awk -F/ -v v4="${ipv4addr}" '$1 ~ "address" { print "local-zone: \""$2"\" refuse" }' "${checkout}/domains.txt" >> "${newdata}"
 fi
 
 if [ -f "${checkout}/hostnames.txt" ] ; then
-  if [ -z "${ipv6}" ] ; then
-    awk '$1 ~ "0.0.0.0" { print "local-data: \""$2" 3600 IN A 127.0.0.1\"" }' "${checkout}/hostnames.txt" >> "${newdata}"
-  else
-    awk '$1 ~ "0.0.0.0" { print "local-data: \""$2" 3600 IN A 127.0.0.1\"\nlocal-data: \""$2" 3600 IN AAAA ::1\"" }' "${checkout}/hostnames.txt" >> "${newdata}"
-  fi
+  awk '$1 ~ "0.0.0.0" { print "local-zone: \""$2"\" refuse" }' "${checkout}/hostnames.txt" >> "${newdata}"
 fi
 
+sort "${newdata}" | uniq > "${uniqdata}"
+
 # move the new local data in place
-cp "${newdata}" "${output}"
-rm "${newdata}"
+cp "${uniqdata}" "${output}"
+rm "${newdata}" "${uniqdata}"
