@@ -14,6 +14,7 @@ if [ -z "${workdir}" ] ; then
 fi
 repo_uri="https://github.com/notracking/hosts-blocklists.git"
 output="local-data.conf"
+lua_output="blocklist.lua"
 # set to anything non-blank to enable
 ipv6=""
 ipv4addr="127.0.0.1"
@@ -62,14 +63,18 @@ uniqdata=$(mktemp)
 # http://www.unbound.net/pipermail/unbound-users/2009-April/000560.html
 if [ -f "${checkout}/domains.txt" ] ; then
   awk -F/ -v v4="${ipv4addr}" '$1 ~ "address" { print "local-zone: \""$2"\" refuse" }' "${checkout}/domains.txt" >> "${newdata}"
+  awk -F/ -v v4="${ipv4addr}" '$1 ~ "address" { print "\""$2"\"," }' "${checkout}/domains.txt" >> "${newdata}.lua"
 fi
 
 if [ -f "${checkout}/hostnames.txt" ] ; then
   awk '$1 ~ "0.0.0.0" { print "local-zone: \""$2"\" refuse" }' "${checkout}/hostnames.txt" >> "${newdata}"
+  awk '$1 ~ "0.0.0.0" { print "\""$2"\"," }' "${checkout}/hostnames.txt" >> "${newdata}.lua"
 fi
 
 sort "${newdata}" | uniq > "${uniqdata}"
+sort "${newdata}.lua" | uniq | sed -e '1 i return {' -e '$ s/,$/}/' > "${uniqdata}.lua"
 
 # move the new local data in place
 cp "${uniqdata}" "${output}"
-rm "${newdata}" "${uniqdata}"
+cp "${uniqdata}.lua" "${lua_output}"
+rm "${newdata}" "${uniqdata}" "${newdata}.lua" "${uniqdata}.lua"
